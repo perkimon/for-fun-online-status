@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,7 +46,6 @@ type friendResponse struct {
 
 func main() {
 	config := &Config{}
-	//tracker := status.NewTracker()
 
 	LaunchInfo(config)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -85,10 +83,6 @@ func main() {
 		notify := r.Context().Done()
 		fmt.Println(sr.UserID, "Joined")
 		unregisterFn := tracker.Add(sr.UserID, sr.FriendIDs, func(friendID int, online bool) {
-			// onlineTxt := "false"
-			// if online {
-			// 	onlineTxt = "true"
-			// }
 
 			response := friendResponse{
 				UserID: friendID,
@@ -135,8 +129,4 @@ func WaitForCtrlC() {
 	signal.Notify(c, os.Interrupt)
 	// Block until CTRL-C is received.
 	<-c
-}
-
-func processIncoming(c net.Conn, data []byte) error {
-	return nil
 }
