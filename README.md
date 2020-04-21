@@ -7,10 +7,11 @@ V1
 * Listens on http://localhost:2000/status
 * Accepts POST requests to /status and uses text/event-stream to stream json messages back to the client
 * Using curl it is possible to stream updates on when your friends are online
+* Status Tracker has tests
 
 Usage
 
-./go run main.go
+go run main.go
 
 In 4 different terminal windows run the following commands:
 curl -X POST -d '{"user_id": 1, "friends": [2, 3, 4]}' http://localhost:2000/status
