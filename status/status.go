@@ -1,9 +1,12 @@
 package status
 
+import "sync"
+
 type Tracker struct {
 	FriendsList   map[int][]int
 	userIDsOnline map[int]bool
 	notifyMap     map[int]func(friendID int, online bool)
+	mu            *sync.Mutex
 }
 
 func NewTracker() *Tracker {
@@ -11,6 +14,7 @@ func NewTracker() *Tracker {
 		FriendsList:   make(map[int][]int),
 		userIDsOnline: make(map[int]bool),
 		notifyMap:     make(map[int]func(friendID int, online bool)),
+		mu:            &sync.Mutex{},
 	}
 
 	return t
@@ -20,7 +24,8 @@ func NewTracker() *Tracker {
 // when a friend is online
 // Returns a function to call to unsubscribe from the notifications
 func (t *Tracker) Add(userID int, friendsIDs []int, notifyFn func(friendID int, online bool)) func() {
-
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.userIDsOnline[userID] = true
 	t.FriendsList[userID] = friendsIDs
 	//fmt.Println(t.FriendsList)
@@ -30,6 +35,8 @@ func (t *Tracker) Add(userID int, friendsIDs []int, notifyFn func(friendID int, 
 	t.notifyFriendsOf(userID)
 
 	return func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
 		t.userIDsOnline[userID] = false
 		t.notifyFriendsOf(userID)
 		delete(t.notifyMap, userID)
