@@ -75,19 +75,42 @@ func TestAdd(t *testing.T) {
 
 	for _, friendID := range []int{1} {
 		if friend3results[friendID] != false {
-			t.Fatalf("Friend 3 should have friend %v online", friendID)
+			t.Fatalf("Friend 3 should have friend %v offline", friendID)
 			return
 		}
 	}
 
 	for _, friendID := range []int{1} {
 		if friend4results[friendID] != false {
-			t.Fatalf("Friend 4 should have friend %v online", friendID)
+			t.Fatalf("Friend 4 should have friend %v offline", friendID)
 			return
 		}
 	}
 
 	user2LogsoutFn()
+
+	for _, friendID := range []int{1, 2} {
+		if friend3results[friendID] != false {
+			t.Fatalf("Friend 3 should have friend %v offline", friendID)
+			return
+		}
+	}
+
+	for _, friendID := range []int{1, 2} {
+		if friend4results[friendID] != false {
+			t.Fatalf("Friend 4 should have friend %v offline", friendID)
+			return
+		}
+	}
 	user3LogsoutFn()
+
+	for _, friendID := range []int{1, 2, 3} {
+		if friend4results[friendID] != false {
+			t.Fatalf("Friend 4 should have friend %v offline", friendID)
+			return
+		}
+	}
+
 	user4LogsoutFn()
+
 }
