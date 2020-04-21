@@ -14,7 +14,9 @@ Usage
 go run main.go
 
 In 4 different terminal windows run the following commands:
+```
 curl -X POST -d '{"user_id": 1, "friends": [2, 3, 4]}' http://localhost:2000/status
 curl -X POST -d '{"user_id": 2, "friends": [1, 3, 4]}' http://localhost:2000/status
 curl -X POST -d '{"user_id": 3, "friends": [1, 2, 4]}' http://localhost:2000/status
 curl -X POST -d '{"user_id": 4, "friends": [1, 2, 3]}' http://localhost:2000/status
+```
