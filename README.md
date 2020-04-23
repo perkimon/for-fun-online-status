@@ -2,11 +2,9 @@
 An online status service supporting UDP and TCP connections.  Written as an expression of a test challenge.
 
 V1
-* No UDP
-* HTTP only
-* Listens on http://localhost:2000/status
-* Accepts POST requests to /status and uses text/event-stream to stream json messages back to the client
-* Using curl it is possible to stream updates on when your friends are online
+* HTTP on http://0.0.0.0:2000/status (Using curl it is possible to stream updates on when your friends are online)
+* UDP on port 2000
+* Accepts POST requests to /status and uses text/event-stream to stream json messages back to the client 
 * Status Tracker has tests
 
 Usage
