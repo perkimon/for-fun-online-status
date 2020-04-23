@@ -1,10 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,89 +33,81 @@ Questions:
 type Config struct {
 }
 
+type statusRequest struct {
+	UserID    int   `json:"user_id"`
+	FriendIDs []int `json:"friends"`
+}
+
+type friendResponse struct {
+	UserID int  `json:"user_id"`
+	Online bool `json:"online"`
+}
+
 var tracker *status.Tracker
+var resetCh map[int]chan bool
 
 func main() {
 	config := &Config{}
-
 	LaunchInfo(config)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	tracker = status.NewTracker()
+	resetCh = make(map[int]chan bool)
+
 	r := mux.NewRouter()
 	r.HandleFunc("/status", HandleStatus)
 
 	go func() {
-		err := http.ListenAndServe("localhost:2000", r)
+		err := http.ListenAndServe(":2000", r)
 		if err != nil {
 			log.Println(err)
 		}
 	}()
+
+	err := listenForUDP(":2000")
+	if err != nil {
+		log.Println(err)
+	}
+
 	WaitForCtrlC()
 	return
 }
 
-func HandleStatus(w http.ResponseWriter, r *http.Request) {
-	type statusRequest struct {
-		UserID    int   `json:"user_id"`
-		FriendIDs []int `json:"friends"`
-	}
-
-	type friendResponse struct {
-		UserID int  `json:"user_id"`
-		Online bool `json:"online"`
-	}
-
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Method Post is required"))
-		return
-	}
-	sr := &statusRequest{}
-	postdata, err := ioutil.ReadAll(r.Body)
+func listenForUDP(addr string) error {
+	ladd, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
-		w.Write([]byte("Cannot read post data1"))
-		return
+		return err
 	}
-	err = json.Unmarshal(postdata, sr)
+	udpConn, err := net.ListenUDP("udp", ladd)
 	if err != nil {
-		w.Write([]byte("Bad post JSON"))
-		return
+		return err
 	}
-	w.WriteHeader(http.StatusOK)
-	//Make sure that the writer supports flushing.
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
-		return
+	size := 1024 * 1024
+	err = udpConn.SetReadBuffer(size)
+	if err != nil {
+		return err
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	flusher.Flush()
-	notify := r.Context().Done()
-	fmt.Println(sr.UserID, "Joined")
-	unregisterFn := tracker.Add(sr.UserID, sr.FriendIDs, func(friendID int, online bool) {
-
-		response := friendResponse{
-			UserID: friendID,
-			Online: online,
+	b := make([]byte, 1024, 1024)
+	oob := make([]byte, 1024, 1024)
+	go func() {
+		for {
+			n, _, _, raddr, err := udpConn.ReadMsgUDP(b, oob)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			if n > 0 {
+				// Copy into new byte array in case multiple go routines are used to process array
+				// Avoids overwriting data from byte array re-use
+				UDPin := make([]byte, n)
+				copy(UDPin, b[:n])
+				processUDP(UDPin, raddr, udpConn)
+			}
 		}
-		data, err := json.Marshal(response)
-		if err != nil {
-			log.Println("Json error")
-			return
-		}
-		out := fmt.Sprintf("%v\n", string(data))
-		fmt.Fprintf(w, out)
-		fmt.Println(string(data))
-		flusher.Flush()
-	})
+		defer udpConn.Close()
 
-	<-notify
-	fmt.Println(sr.UserID, "Disconnected")
-	unregisterFn()
+	}()
 
+	return nil
 }
 
 func LaunchInfo(c *Config) {
@@ -126,6 +117,7 @@ func LaunchInfo(c *Config) {
 	fmt.Println(`curl -X POST -d '{"user_id": 2, "friends": [1, 3, 4]}' http://localhost:2000/status`)
 	fmt.Println(`curl -X POST -d '{"user_id": 3, "friends": [1, 2, 4]}' http://localhost:2000/status`)
 	fmt.Println(`curl -X POST -d '{"user_id": 4, "friends": [1, 2, 3]}' http://localhost:2000/status`)
+	fmt.Println(`Can also run netcat for UDP connections on nc -u localhost 2000 using the same json`)
 }
 
 func WaitForCtrlC() {

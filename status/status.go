@@ -1,22 +1,46 @@
 package status
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+const StatelessTimeoutInSecs = 5
 
 type Tracker struct {
-	FriendsList   map[int][]int
-	userIDsOnline map[int]bool
-	notifyMap     map[int]func(friendID int, online bool)
-	mu            *sync.Mutex
+	users     map[int]*User //user state
+	mu        *sync.Mutex
+	stateless map[int]bool //users connections which are stateless (UDP)
+}
+
+type User struct {
+	id           int
+	friends      []int
+	online       bool
+	lastSeen     time.Time
+	notifyFn     func(friendID int, online bool)
+	disconnectFn func()
+}
+
+func NewUser(id int, friends []int, online bool, lastseen time.Time, notifyFn func(friendID int, online bool)) *User {
+	u := &User{
+		id:       id,
+		friends:  friends,
+		online:   online,
+		lastSeen: lastseen,
+		notifyFn: notifyFn,
+	}
+	return u
 }
 
 func NewTracker() *Tracker {
 	t := &Tracker{
-		FriendsList:   make(map[int][]int),
-		userIDsOnline: make(map[int]bool),
-		notifyMap:     make(map[int]func(friendID int, online bool)),
-		mu:            &sync.Mutex{},
+		users:     make(map[int]*User),
+		stateless: make(map[int]bool),
+		mu:        &sync.Mutex{},
 	}
-
+	t.startTimeoutWorker(1)
 	return t
 }
 
@@ -26,69 +50,99 @@ func NewTracker() *Tracker {
 func (t *Tracker) Add(userID int, friendsIDs []int, notifyFn func(friendID int, online bool)) func() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.userIDsOnline[userID] = true
-	t.FriendsList[userID] = friendsIDs
-	//fmt.Println(t.FriendsList)
-	t.notifyMap[userID] = notifyFn
+	//clear out memory for existing user
+	delete(t.users, userID)
+
+	user := NewUser(userID, friendsIDs, true, time.Now(), notifyFn)
+	t.users[userID] = user
 
 	t.notifyUserOfFriendsStatus(userID)
 	t.notifyFriendsOf(userID)
 
-	return func() {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		t.userIDsOnline[userID] = false
-		t.notifyFriendsOf(userID)
-		delete(t.notifyMap, userID)
+	// if timeoutInSeconds > 0 {
+	// 	delay := time.Duration(timeoutInSeconds) * time.Second
+	// 	t.timeoutMap[time.Now().Add(delay)] = disconnectFn
+	// }
+
+	disconnectFn := func() {
+		t.disconnectUser(userID)
 	}
+	return disconnectFn
+}
+
+func (t *Tracker) Stateless(userID int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.stateless[userID] = true
+}
+
+func (t *Tracker) disconnectUser(userID int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.users[userID].online = false
+	t.notifyFriendsOf(userID)
+	delete(t.users, userID)
+	fmt.Println(userID, "Disconnected FN")
 }
 
 func (t *Tracker) notifyUserOfFriendsStatus(userID int) {
-	notifyFn, ok := t.notifyMap[userID]
+
+	user, ok := t.users[userID]
 	if !ok {
 		return
 	}
-	friendIDs, ok := t.FriendsList[userID]
-	//fmt.Println("Friends for ", userID, friendIDs)
-	if !ok {
-		//no friends found
-		//fmt.Println("no friends list found")
-		return
-	}
+	friendIDs := user.friends
 
 	for _, friendID := range friendIDs {
-		online, ok := t.userIDsOnline[friendID]
+		online := false
+		friend, ok := t.users[friendID]
 		if !ok {
 			//fmt.Println("userIDsOnline user not in the map")
 			online = false
+		} else {
+			online = friend.online
 		}
-		notifyFn(friendID, online)
+
+		user.notifyFn(friendID, online)
 	}
 
 }
 
 func (t *Tracker) notifyFriendsOf(userID int) {
-	online, ok := t.userIDsOnline[userID]
+	user, ok := t.users[userID]
 	if !ok {
-		//fmt.Println("userIDsOnline user not in the map")
-		online = false
-	}
-
-	friendIDs, ok := t.FriendsList[userID]
-	//fmt.Println("Friends for ", userID, friendIDs)
-	if !ok {
-		//no friends found
-		//fmt.Println("no friends list found")
 		return
 	}
+	online := user.online
+	friendIDs := user.friends
 
 	for _, friend := range friendIDs {
-		notifyFn, ok := t.notifyMap[friend]
+		friend, ok := t.users[friend]
 		if !ok {
-			//fmt.Println("Notify FN not found")
 			continue
 		}
-		notifyFn(userID, online)
-
+		friend.notifyFn(userID, online)
 	}
+}
+
+func (t *Tracker) startTimeoutWorker(intervalInSeconds int) {
+	go func() {
+		for {
+			//fmt.Println("Sleeping")
+			time.Sleep(time.Duration(intervalInSeconds) * time.Second)
+			//fmt.Println("Waking")
+			for userID, _ := range t.stateless {
+				user, ok := t.users[userID]
+				if !ok {
+					delete(t.stateless, userID)
+					continue
+				}
+				if time.Now().After(user.lastSeen.Add(time.Duration(1) * StatelessTimeoutInSecs * time.Second)) {
+					fmt.Println("Conn timedout")
+					t.disconnectUser(user.id)
+					delete(t.stateless, user.id)
+				}
+			}
+		}
+	}()
 }
