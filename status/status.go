@@ -14,26 +14,6 @@ type Tracker struct {
 	stateless map[int]bool //users connections which are stateless (UDP)
 }
 
-type User struct {
-	id           int
-	friends      []int
-	online       bool
-	lastSeen     time.Time
-	notifyFn     func(friendID int, online bool)
-	disconnectFn func()
-}
-
-func NewUser(id int, friends []int, online bool, lastseen time.Time, notifyFn func(friendID int, online bool)) *User {
-	u := &User{
-		id:       id,
-		friends:  friends,
-		online:   online,
-		lastSeen: lastseen,
-		notifyFn: notifyFn,
-	}
-	return u
-}
-
 func NewTracker() *Tracker {
 	t := &Tracker{
 		users:     make(map[int]*User),
@@ -74,6 +54,9 @@ func (t *Tracker) Stateless(userID int) {
 }
 
 func (t *Tracker) disconnectUser(userID int) {
+	if _, ok := t.users[userID]; !ok {
+		return
+	}
 	t.users[userID].online = false
 	t.notifyFriendsOf(userID)
 	delete(t.users, userID)
@@ -86,21 +69,23 @@ func (t *Tracker) notifyUserOfFriendsStatus(userID int) {
 	if !ok {
 		return
 	}
-	friendIDs := user.friends
 
-	for _, friendID := range friendIDs {
+	for friendID, _ := range user.friends {
 		online := false
 		friend, ok := t.users[friendID]
 		if !ok {
-			//fmt.Println("userIDsOnline user not in the map")
 			online = false
-		} else {
-			online = friend.online
+			user.notifyFn(friendID, online)
+			continue
 		}
 
-		user.notifyFn(friendID, online)
+		if friend.IsFriend(userID) {
+			online = friend.online
+			user.notifyFn(friendID, online)
+			continue
+		}
+		user.notifyFn(friendID, false)
 	}
-
 }
 
 func (t *Tracker) notifyFriendsOf(userID int) {
@@ -111,12 +96,17 @@ func (t *Tracker) notifyFriendsOf(userID int) {
 	online := user.online
 	friendIDs := user.friends
 
-	for _, friend := range friendIDs {
-		friend, ok := t.users[friend]
+	for friendID, _ := range friendIDs {
+		friend, ok := t.users[friendID]
 		if !ok {
 			continue
 		}
-		friend.notifyFn(userID, online)
+
+		//only notify friends that recipricate
+		ok = friend.IsFriend(userID)
+		if ok {
+			friend.notifyFn(userID, online)
+		}
 	}
 }
 

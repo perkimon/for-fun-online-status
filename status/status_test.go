@@ -1,6 +1,7 @@
 package status
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -113,4 +114,61 @@ func TestAdd(t *testing.T) {
 
 	user4LogsoutFn()
 
+}
+
+func TestAddFriendButOnlyGetEventsWhenRecipricol1(t *testing.T) {
+
+	friend1results := make(map[int]bool)
+	friend2results := make(map[int]bool)
+
+	tracker := NewTracker()
+	user1LogsoutFn := tracker.Add(1, []int{}, func(friendID int, online bool) {
+		fmt.Println("1", friendID)
+		friend1results[friendID] = online
+	})
+
+	user2LogsoutFn := tracker.Add(2, []int{1}, func(friendID int, online bool) {
+		fmt.Println("2", friendID)
+		friend2results[friendID] = online
+	})
+
+	online, ok := friend1results[2]
+	if ok {
+		if online {
+			t.Fatalf("Friend 1 should not receive notifcations from friend 2 as friend 1 does not have friend 2 in their friends list")
+		}
+	}
+	if false {
+		user1LogsoutFn()
+		user2LogsoutFn()
+	}
+}
+
+func TestAddFriendButOnlyGetEventsWhenRecipricol2(t *testing.T) {
+
+	friend1results := make(map[int]bool)
+	friend2results := make(map[int]bool)
+
+	tracker := NewTracker()
+
+	user2LogsoutFn := tracker.Add(2, []int{}, func(friendID int, online bool) {
+		fmt.Println("2", friendID)
+		friend2results[friendID] = online
+	})
+
+	user1LogsoutFn := tracker.Add(1, []int{2}, func(friendID int, online bool) {
+		fmt.Println("1", friendID)
+		friend1results[friendID] = online
+	})
+
+	online, ok := friend1results[2]
+	if ok {
+		if online {
+			t.Fatalf("Friend 1 should not receive notifcations from friend 2 as friend 1 does not have friend 2 in their friends list")
+		}
+	}
+	if false {
+		user1LogsoutFn()
+		user2LogsoutFn()
+	}
 }

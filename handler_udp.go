@@ -14,7 +14,6 @@ func processUDP(b []byte, raddr *net.UDPAddr, conn *net.UDPConn) {
 		fmt.Println("Bad post JSON")
 		return
 	}
-	fmt.Println(sr)
 	tracker.Add(sr.UserID, sr.FriendIDs, func(friendID int, online bool) {
 		response := friendResponse{
 			UserID: friendID,
@@ -25,8 +24,7 @@ func processUDP(b []byte, raddr *net.UDPAddr, conn *net.UDPConn) {
 			log.Println("Json error")
 			return
 		}
-		nl := "\n"
-		data = append(data, []byte(nl)...)
+		data = append(data, []byte("\n")...)
 		_, err = conn.WriteToUDP(data, raddr)
 		if err != nil {
 			fmt.Println("Error responding")
