@@ -3,12 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 
-	"github.com/gorilla/mux"
 	"github.com/perkimon/for-fun-online-status/status"
 )
 
@@ -30,93 +27,20 @@ Questions:
 4. How design of your application will change if there will be more than one instance of the server.
 */
 
-type Config struct {
-}
-
-type statusRequest struct {
-	UserID    int   `json:"user_id"`
-	FriendIDs []int `json:"friends"`
-}
-
-type friendResponse struct {
-	UserID int  `json:"user_id"`
-	Online bool `json:"online"`
-}
-
-var tracker *status.Tracker
-var resetCh map[int]chan bool
-
 func main() {
-	config := &Config{}
-	LaunchInfo(config)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	tracker = status.NewTracker()
-	resetCh = make(map[int]chan bool)
-
-	r := mux.NewRouter()
-	r.HandleFunc("/status", HandleStatus)
-
-	go func() {
-		err := http.ListenAndServe(":2000", r)
-		if err != nil {
-			log.Println(err)
-		}
-	}()
-
-	err := listenForUDP(":2000")
-	if err != nil {
-		log.Println(err)
-	}
-
+	LaunchInfo()
+	status.Do()
 	WaitForCtrlC()
 	return
 }
 
-func listenForUDP(addr string) error {
-	ladd, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return err
-	}
-	udpConn, err := net.ListenUDP("udp", ladd)
-	if err != nil {
-		return err
-	}
-	size := 1024 * 1024
-	err = udpConn.SetReadBuffer(size)
-	if err != nil {
-		return err
-	}
-	b := make([]byte, 1024, 1024)
-	oob := make([]byte, 1024, 1024)
-	go func() {
-		for {
-			n, _, _, raddr, err := udpConn.ReadMsgUDP(b, oob)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			if n > 0 {
-				// Copy into new byte array in case multiple go routines are used to process array
-				// Avoids overwriting data from byte array re-use
-				UDPin := make([]byte, n)
-				copy(UDPin, b[:n])
-				processUDP(UDPin, raddr, udpConn)
-			}
-		}
-		defer udpConn.Close()
-
-	}()
-
-	return nil
-}
-
-func LaunchInfo(c *Config) {
+func LaunchInfo() {
 	fmt.Println("Launched...  Exit with CTRL-C")
-	fmt.Println("Use curl to update status and listen for changes")
-	fmt.Println(`curl -X POST -d '{"user_id": 1, "friends": [2, 3, 4]}' http://localhost:2000/status`)
-	fmt.Println(`curl -X POST -d '{"user_id": 2, "friends": [1, 3, 4]}' http://localhost:2000/status`)
-	fmt.Println(`curl -X POST -d '{"user_id": 3, "friends": [1, 2, 4]}' http://localhost:2000/status`)
-	fmt.Println(`curl -X POST -d '{"user_id": 4, "friends": [1, 2, 3]}' http://localhost:2000/status`)
+	fmt.Println(`nc localhost 2000 '{"user_id": 1, "friends": [2, 3, 4]}'`)
+	fmt.Println(`nc localhost 2000 '{"user_id": 2, "friends": [1, 3, 4]}'`)
+	fmt.Println(`nc localhost 2000 '{"user_id": 3, "friends": [1, 2, 4]}'`)
+	fmt.Println(`nc -u localhost 2000 '{"user_id": 4, "friends": [1, 2, 3]}'`)
 	fmt.Println(`Can also run netcat for UDP connections on nc -u localhost 2000 using the same json`)
 }
 
