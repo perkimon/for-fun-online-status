@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Example statu requests with optional action
+// Example status requests with optional action
 //{"user_id": 2, "friends": [1, 3, 4],"Action":2}
 //{"user_id": 2, "friends": [1, 3, 4],"Action":1}
 
