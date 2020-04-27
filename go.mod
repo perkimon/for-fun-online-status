@@ -1,5 +1,0 @@
-module github.com/perkimon/for-fun-online-status
-
-go 1.13
-
-require github.com/gorilla/mux v1.7.4
