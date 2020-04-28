@@ -5,29 +5,6 @@ import (
 	"time"
 )
 
-// Example status requests with optional action
-//{"user_id": 2, "friends": [1, 3, 4],"Action":2}
-//{"user_id": 2, "friends": [1, 3, 4],"Action":1}
-
-type Responder interface {
-	Reply(fr *friendResponse) error
-	IsStateless() bool
-}
-
-type requestContext struct {
-	statusRequest *statusRequest
-	responder     Responder
-	Action        int
-}
-
-type userContext struct {
-	ID        int
-	Friends   []int
-	Responder Responder
-	Online    bool
-	LastSeen  time.Time
-}
-
 const (
 	Empty = iota
 	Joining
@@ -37,6 +14,25 @@ const (
 )
 
 const OnlineTTL = 30
+
+type Responder interface {
+	Reply(fr *friendResponse) error
+	IsStateless() bool
+}
+
+type requestContext struct {
+	statusRequest *statusRequest
+	responder     Responder
+	action        int
+}
+
+type userContext struct {
+	ID        int
+	Friends   []int
+	Responder Responder
+	Online    bool
+	LastSeen  time.Time
+}
 
 type statusRequest struct {
 	UserID    int   `json:"user_id"`
@@ -75,7 +71,7 @@ func startConsumer(incomingCh chan *requestContext) error {
 		users := make(map[int]*userContext)
 		for rc := range incomingCh {
 			//fmt.Println(rc.statusRequest.UserID, rc.statusRequest.FriendIDs)
-			switch rc.Action {
+			switch rc.action {
 
 			case Joining:
 				//save state
@@ -182,7 +178,7 @@ func startConsumer(incomingCh chan *requestContext) error {
 							incomingCh <- &requestContext{
 								statusRequest: rc.statusRequest,
 								responder:     rc.responder,
-								Action:        Leaving,
+								action:        Leaving,
 							}
 						}()
 					}
@@ -202,7 +198,7 @@ func asyncCheck(uc *userContext, rc *requestContext, incomingCh chan *requestCon
 			incomingCh <- &requestContext{
 				statusRequest: rc.statusRequest,
 				responder:     rc.responder,
-				Action:        Check,
+				action:        Check,
 			}
 		}()
 	}

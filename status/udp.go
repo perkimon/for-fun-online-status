@@ -74,7 +74,7 @@ func udpListener(incomingCh chan<- *requestContext) error {
 						raddr: raddr,
 						conn:  udpConn,
 					},
-					Action: request.Action,
+					action: request.Action,
 				}
 
 			}

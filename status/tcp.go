@@ -69,9 +69,10 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 					responder: &TCPResponder{
 						conn: conn,
 					},
-					Action: Joining,
+					action: Joining,
 				}
 				if !deferExitSet {
+					//When the TCP connection exits send a Leaving message
 					deferExitSet = true
 					defer func() {
 
@@ -83,7 +84,7 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 							responder: &TCPResponder{
 								conn: conn,
 							},
-							Action: Leaving,
+							action: Leaving,
 						}
 					}()
 				}
