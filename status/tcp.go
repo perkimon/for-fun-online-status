@@ -54,11 +54,14 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 					}
 					return
 				}
+				if len(bytes) < 2 {
+					continue
+				}
 				request := &statusRequest{}
 				err = json.Unmarshal(bytes, request)
 				if err != nil {
 					log.Println("JSON error", err)
-					return
+					continue
 				}
 
 				incomingCh <- &requestContext{

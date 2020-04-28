@@ -55,8 +55,9 @@ func udpListener(incomingCh chan<- *requestContext) error {
 				return
 			}
 			if n > 0 {
-				// Copy into new byte array in case multiple go routines are used to process array
-				// Avoids overwriting data from byte array re-use
+				if n < 2 {
+					continue
+				}
 				request := &statusRequest{}
 				err := json.Unmarshal(b[:n], request)
 				if err != nil {

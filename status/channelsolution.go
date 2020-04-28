@@ -41,7 +41,7 @@ const OnlineTTL = 30
 type statusRequest struct {
 	UserID    int   `json:"user_id"`
 	FriendIDs []int `json:"friends"`
-	Action    int   `json:",omitempty"`
+	Action    int   `json:"action,omitempty"`
 }
 
 type friendResponse struct {
