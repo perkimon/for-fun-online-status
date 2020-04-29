@@ -15,11 +15,16 @@ const (
 	Remove
 )
 
-const OnlineTTL = 30
+var OnlineTTL = time.Duration(30) * time.Second
 
 type Responder interface {
 	Reply(fr *friendResponse) error
 	IsStateless() bool
+}
+
+type workIn struct {
+	action  int
+	payload interface{}
 }
 
 type requestContext struct {
@@ -49,7 +54,7 @@ type friendResponse struct {
 }
 
 func Do() {
-	incomingCh := make(chan *requestContext, 0)
+	incomingCh := make(chan workIn, 0)
 	err := startConsumer(incomingCh)
 	if err != nil {
 		log.Println(err)
@@ -69,26 +74,26 @@ func Do() {
 
 }
 
-func startConsumer(incomingCh chan *requestContext) error {
+func startConsumer(incomingCh chan workIn) error {
 
 	go func() {
 		users := make(map[int]*userContext)
-		for rc := range incomingCh {
+		for work := range incomingCh {
 
-			switch rc.action {
+			switch work.action {
 
 			case Joining:
 				//save state
-				uc := &userContext{
-					ID:        rc.statusRequest.UserID,
-					Friends:   rc.statusRequest.FriendIDs,
-					Responder: rc.responder,
-					Online:    true,
-					LastSeen:  time.Now(),
+				uc, ok := work.payload.(*userContext)
+				if !ok {
+					log.Println("Not a userContext")
+					continue
 				}
-				users[rc.statusRequest.UserID] = uc
+				users[uc.ID] = uc
+				uc.Online = true
+				uc.LastSeen = time.Now()
 
-				asyncCheck(uc, rc, incomingCh)
+				asyncCheck(uc, incomingCh)
 
 				//send user friend status'
 				for _, friendID := range uc.Friends {
@@ -99,7 +104,7 @@ func startConsumer(incomingCh chan *requestContext) error {
 					} else {
 						online = users[friendID].Online
 						if friendContext.Responder.IsStateless() {
-							if time.Now().After(friendContext.LastSeen.Add(time.Duration(1) * OnlineTTL * time.Second)) {
+							if time.Now().After(friendContext.LastSeen.Add(OnlineTTL)) {
 								log.Println("UserId not seen in a while:", friendContext.ID, friendContext.LastSeen)
 								online = false
 							}
@@ -122,8 +127,12 @@ func startConsumer(incomingCh chan *requestContext) error {
 				}
 				log.Println("UserID", uc.ID, "Joined")
 			case Leaving:
-				uc, ok := users[rc.statusRequest.UserID]
-
+				uc, ok := work.payload.(*userContext)
+				if !ok {
+					log.Println("Not a userContext")
+					continue
+				}
+				uc, ok = users[uc.ID]
 				if !ok {
 					log.Println("no user found")
 					continue
@@ -146,52 +155,62 @@ func startConsumer(incomingCh chan *requestContext) error {
 
 			case Waving:
 				//Update last seen
-				uc, ok := users[rc.statusRequest.UserID]
+				uc, ok := work.payload.(*userContext)
+				if !ok {
+					log.Println("Not a userContext")
+					continue
+				}
+				uc, ok = users[uc.ID]
 				if ok {
-					log.Println("UserID", rc.statusRequest.UserID, "Waved")
-					users[rc.statusRequest.UserID].LastSeen = time.Now()
-					asyncCheck(uc, rc, incomingCh)
+					log.Println("UserID", uc.ID, "Waved")
+					users[uc.ID].LastSeen = time.Now()
+					asyncCheck(uc, incomingCh)
 				}
 			case Check:
-				//Update last seen
-				uc, ok := users[rc.statusRequest.UserID]
+				uc, ok := work.payload.(*userContext)
+				if !ok {
+					log.Println("Not a userContext")
+					continue
+				}
+
+				uc, ok = users[uc.ID]
 				if ok {
 					log.Println("UserID", uc.ID, "Checking")
-					if time.Now().After(uc.LastSeen.Add(time.Duration(1) * OnlineTTL * time.Second)) {
+					if time.Now().After(uc.LastSeen.Add(OnlineTTL)) {
 						log.Println("UserID", uc.ID, "Timedout - should send a wave to avoid this")
 						go func() {
-							incomingCh <- &requestContext{
-								statusRequest: rc.statusRequest,
-								responder:     rc.responder,
-								action:        Leaving,
+							incomingCh <- workIn{
+								action:  Leaving,
+								payload: uc,
 							}
 						}()
 					}
 				}
 			case Remove:
-				userID, ok := rc.payload.(int)
+				userID, ok := work.payload.(int)
 				if !ok {
 					log.Println("Payload was not an integer, user not deleted")
 					continue
 				}
 				log.Println("Removing", userID)
 				delete(users, userID)
+			case Empty:
+				log.Println("Empty action overridden")
 			default:
-
+				log.Println("Default action executed")
 			}
 		}
 	}()
 	return nil
 }
 
-func asyncCheck(uc *userContext, rc *requestContext, incomingCh chan *requestContext) {
+func asyncCheck(uc *userContext, incomingCh chan workIn) {
 	if uc.Responder.IsStateless() {
 		go func() {
-			time.Sleep(time.Duration(time.Second) * OnlineTTL)
-			incomingCh <- &requestContext{
-				statusRequest: rc.statusRequest,
-				responder:     rc.responder,
-				action:        Check,
+			time.Sleep(OnlineTTL)
+			incomingCh <- workIn{
+				action:  Check,
+				payload: uc,
 			}
 		}()
 	}
@@ -214,7 +233,7 @@ func allowedUserActions(action int) int {
 
 // Reply to a connected user without blocking
 // errors are handled by sending another request to delete the recipient on failure
-func Reply(incomingCh chan *requestContext, notify *userContext, userID int, online bool) {
+func Reply(incomingCh chan workIn, notify *userContext, userID int, online bool) {
 	go func() {
 		err := notify.Responder.Reply(&friendResponse{
 			UserID: userID,
@@ -222,7 +241,7 @@ func Reply(incomingCh chan *requestContext, notify *userContext, userID int, onl
 		})
 		if err != nil {
 			log.Println("error replying:", err, "deleting user", notify.ID)
-			incomingCh <- &requestContext{
+			incomingCh <- workIn{
 				action:  Remove,
 				payload: notify.ID,
 			}

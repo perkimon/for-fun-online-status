@@ -34,7 +34,7 @@ func (ur *TCPResponder) IsStateless() bool {
 	return false
 }
 
-func tcpListener(incomingCh chan<- *requestContext) error {
+func tcpListener(incomingCh chan<- workIn) error {
 	ln, err := net.Listen("tcp", ":2000")
 	if err != nil {
 		return err
@@ -68,27 +68,31 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 					log.Println("JSON error", err)
 					continue
 				}
-				incomingCh <- &requestContext{
-					statusRequest: request,
-					responder: &TCPResponder{
-						conn: conn,
-					},
+
+				incomingCh <- workIn{
 					action: allowedUserActions(Joining),
+					payload: &userContext{
+						Responder: &TCPResponder{
+							conn: conn,
+						},
+						ID:      request.UserID,
+						Friends: request.FriendIDs,
+					},
 				}
+
 				if !deferExitSet {
 					//When the TCP connection exits send a Leaving message
 					deferExitSet = true
 					defer func() {
-
-						incomingCh <- &requestContext{
-							statusRequest: &statusRequest{
-								UserID:    request.UserID,
-								FriendIDs: request.FriendIDs,
-							},
-							responder: &TCPResponder{
-								conn: conn,
-							},
+						incomingCh <- workIn{
 							action: allowedUserActions(Leaving),
+							payload: &userContext{
+								Responder: &TCPResponder{
+									conn: conn,
+								},
+								ID:      request.UserID,
+								Friends: request.FriendIDs,
+							},
 						}
 					}()
 				}

@@ -29,7 +29,7 @@ func (ur *UDPResponder) IsStateless() bool {
 	return true
 }
 
-func udpListener(incomingCh chan<- *requestContext) error {
+func udpListener(incomingCh chan<- workIn) error {
 	ladd, err := net.ResolveUDPAddr("udp", ":2000")
 	if err != nil {
 		return err
@@ -70,13 +70,16 @@ func udpListener(incomingCh chan<- *requestContext) error {
 
 				action := allowedUserActions(request.Action)
 
-				incomingCh <- &requestContext{
-					statusRequest: request,
-					responder: &UDPResponder{
-						raddr: raddr,
-						conn:  udpConn,
-					},
+				incomingCh <- workIn{
 					action: action,
+					payload: &userContext{
+						Responder: &UDPResponder{
+							raddr: raddr,
+							conn:  udpConn,
+						},
+						ID:      request.UserID,
+						Friends: request.FriendIDs,
+					},
 				}
 
 			}
