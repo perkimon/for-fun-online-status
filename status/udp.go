@@ -2,7 +2,6 @@ package status
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 )
@@ -51,7 +50,7 @@ func udpListener(incomingCh chan<- *requestContext) error {
 		for {
 			n, _, _, raddr, err := udpConn.ReadMsgUDP(b, oob)
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 				return
 			}
 			if n > 0 {
