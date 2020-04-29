@@ -1,3 +1,4 @@
+//go:generate mockgen -package status -source=channelsolution.go -destination channelsolution_mock.go
 package status
 
 import (
@@ -70,7 +71,7 @@ func startConsumer(incomingCh chan *requestContext) error {
 	go func() {
 		users := make(map[int]*userContext)
 		for rc := range incomingCh {
-			//fmt.Println(rc.statusRequest.UserID, rc.statusRequest.FriendIDs)
+
 			switch rc.action {
 
 			case Joining:
