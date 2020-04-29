@@ -12,6 +12,7 @@ const (
 	Leaving
 	Waving //for connectionless transports
 	Check
+	Remove
 )
 
 const OnlineTTL = 30
@@ -25,6 +26,7 @@ type requestContext struct {
 	statusRequest *statusRequest
 	responder     Responder
 	action        int
+	payload       interface{}
 }
 
 type userContext struct {
@@ -68,6 +70,7 @@ func Do() {
 }
 
 func startConsumer(incomingCh chan *requestContext) error {
+
 	go func() {
 		users := make(map[int]*userContext)
 		for rc := range incomingCh {
@@ -103,11 +106,7 @@ func startConsumer(incomingCh chan *requestContext) error {
 						}
 					}
 
-					fr := &friendResponse{
-						UserID: friendID,
-						Online: online,
-					}
-					uc.Responder.Reply(fr)
+					Reply(incomingCh, uc, friendID, online)
 				}
 
 				//notify friends of user coming online
@@ -118,16 +117,8 @@ func startConsumer(incomingCh chan *requestContext) error {
 						continue
 					}
 
-					fr := &friendResponse{
-						UserID: uc.ID,
-						Online: true,
-					}
+					Reply(incomingCh, friendContext, uc.ID, true)
 
-					err := friendContext.Responder.Reply(fr)
-					if err != nil {
-						log.Println("error responding, deleting user")
-						delete(users, uc.ID)
-					}
 				}
 				log.Println("UserID", uc.ID, "Joined")
 			case Leaving:
@@ -146,15 +137,8 @@ func startConsumer(incomingCh chan *requestContext) error {
 						//friend doesn't exist
 						continue
 					}
-					fr := &friendResponse{
-						UserID: uc.ID,
-						Online: false,
-					}
-					err := friendContext.Responder.Reply(fr)
-					if err != nil {
-						log.Println("error responding, deleting user", fr.UserID)
-						delete(users, uc.ID)
-					}
+
+					Reply(incomingCh, friendContext, uc.ID, false)
 				}
 				log.Println("UserID", uc.ID, "Left")
 				//delete user
@@ -184,6 +168,14 @@ func startConsumer(incomingCh chan *requestContext) error {
 						}()
 					}
 				}
+			case Remove:
+				userID, ok := rc.payload.(int)
+				if !ok {
+					log.Println("Payload was not an integer, user not deleted")
+					continue
+				}
+				log.Println("Removing", userID)
+				delete(users, userID)
 			default:
 
 			}
@@ -203,4 +195,37 @@ func asyncCheck(uc *userContext, rc *requestContext, incomingCh chan *requestCon
 			}
 		}()
 	}
+}
+
+func allowedUserActions(action int) int {
+	switch action {
+	case Joining:
+		return Joining
+	case Leaving:
+		return Leaving
+	case Waving:
+		return Waving
+	default:
+		return Empty
+	}
+
+	return Empty
+}
+
+// Reply to a connected user without blocking
+// errors are handled by sending another request to delete the recipient on failure
+func Reply(incomingCh chan *requestContext, notify *userContext, userID int, online bool) {
+	go func() {
+		err := notify.Responder.Reply(&friendResponse{
+			UserID: userID,
+			Online: online,
+		})
+		if err != nil {
+			log.Println("error replying:", err, "deleting user", notify.ID)
+			incomingCh <- &requestContext{
+				action:  Remove,
+				payload: notify.ID,
+			}
+		}
+	}()
 }

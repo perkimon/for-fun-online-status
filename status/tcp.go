@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 )
 
 type TCPResponder struct {
@@ -19,6 +20,9 @@ func (ur *TCPResponder) Reply(fr *friendResponse) error {
 		return nil
 	}
 	data = append(data, []byte("\n")...)
+
+	//set timeout
+	ur.conn.SetWriteDeadline(time.Now().Add(time.Duration(time.Millisecond) * 500))
 	_, err = ur.conn.Write(data)
 	if err != nil {
 		return err
@@ -40,6 +44,7 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 		if err != nil {
 			return err
 		}
+
 		go func(conn net.Conn) {
 			log.Println("Connection")
 			defer conn.Close()
@@ -63,13 +68,12 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 					log.Println("JSON error", err)
 					continue
 				}
-
 				incomingCh <- &requestContext{
 					statusRequest: request,
 					responder: &TCPResponder{
 						conn: conn,
 					},
-					action: Joining,
+					action: allowedUserActions(Joining),
 				}
 				if !deferExitSet {
 					//When the TCP connection exits send a Leaving message
@@ -84,7 +88,7 @@ func tcpListener(incomingCh chan<- *requestContext) error {
 							responder: &TCPResponder{
 								conn: conn,
 							},
-							action: Leaving,
+							action: allowedUserActions(Leaving),
 						}
 					}()
 				}

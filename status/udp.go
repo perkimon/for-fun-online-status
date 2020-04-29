@@ -63,9 +63,12 @@ func udpListener(incomingCh chan<- *requestContext) error {
 					log.Println("JSON error", err)
 					continue
 				}
+
 				if request.Action == Empty {
 					request.Action = Joining
 				}
+
+				action := allowedUserActions(request.Action)
 
 				incomingCh <- &requestContext{
 					statusRequest: request,
@@ -73,7 +76,7 @@ func udpListener(incomingCh chan<- *requestContext) error {
 						raddr: raddr,
 						conn:  udpConn,
 					},
-					action: request.Action,
+					action: action,
 				}
 
 			}
